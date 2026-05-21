@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: geco-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn backend.wsgi:application"
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: AT_USERNAME
+        value: sandbox
+      - key: AT_API_KEY
+        value: changez_moi
+      - key: DATABASE_URL
+        fromDatabase:
+          name: geco-db
+          property: connectionString
+
+databases:
+  - name: geco-db
+    plan: free
