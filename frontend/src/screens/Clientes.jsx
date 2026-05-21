@@ -151,10 +151,31 @@ export default function Clientes() {
   );
 }
 
+const MOIS_COURT = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+
+function fmtDate(d) {
+  if (!d) return '';
+  const dt = new Date(d);
+  return `${dt.getDate()} ${MOIS_COURT[dt.getMonth()]}`;
+}
+
+function echeanceLabel(jours) {
+  if (jours === null || jours === undefined) return null;
+  if (jours < 0) return { txt: `${Math.abs(jours)}j de retard`, color: 'var(--r600)', bg: 'var(--r50)' };
+  if (jours === 0) return { txt: "Aujourd'hui !", color: 'var(--r600)', bg: 'var(--r50)' };
+  if (jours <= 2) return { txt: `Dans ${jours}j`, color: '#92400E', bg: 'var(--a50)' };
+  return { txt: `Dans ${jours}j`, color: 'var(--g700)', bg: 'var(--g50)' };
+}
+
 function ClienteRow({ c, first }) {
   const init = c.nom.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
-  const late = c.solde_du > 0;
-  const [bg, fg] = late ? ['var(--r100)', 'var(--r600)'] : ['var(--g100)', 'var(--g700)'];
+  const retard = c.en_retard;
+  const rappel = !retard && c.jours_restants !== null && c.jours_restants <= 2 && c.solde_du > 0;
+  const [bg, fg] = retard ? ['var(--r100)', 'var(--r600)']
+    : rappel ? ['var(--a100)', '#92400E']
+    : ['var(--g100)', 'var(--g700)'];
+  const badge = echeanceLabel(c.jours_restants);
+
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 10, padding: '13px 14px',
@@ -167,14 +188,27 @@ function ClienteRow({ c, first }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 14, fontWeight: 700 }}>{c.nom}</div>
         {c.telephone && <div style={{ fontSize: 11, color: 'var(--muted)' }}>+229 {c.telephone}</div>}
-        <div style={{ display: 'flex', gap: 10, marginTop: 3 }}>
-          <span style={{ fontSize: 11, color: 'var(--g600)', fontWeight: 600 }}>
-            Limite: {c.limite_credit.toLocaleString('fr-FR')} FCFA
-          </span>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 4, alignItems: 'center' }}>
           {c.solde_du > 0 && (
-            <span style={{ fontSize: 11, color: 'var(--r600)', fontWeight: 600 }}>
-              Doit: {c.solde_du.toLocaleString('fr-FR')} FCFA
+            <span style={{ fontSize: 11, color: 'var(--r600)', fontWeight: 700 }}>
+              Doit : {c.solde_du.toLocaleString('fr-FR')} FCFA
             </span>
+          )}
+          {c.solde_du > 0 && c.date_echeance_proche && (
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+              · avant le {fmtDate(c.date_echeance_proche)}
+            </span>
+          )}
+          {c.solde_du > 0 && badge && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, padding: '2px 7px',
+              borderRadius: 'var(--rad-f)', background: badge.bg, color: badge.color,
+            }}>
+              {badge.txt}
+            </span>
+          )}
+          {c.solde_du === 0 && (
+            <span style={{ fontSize: 11, color: 'var(--g600)', fontWeight: 600 }}>À jour ✓</span>
           )}
         </div>
       </div>

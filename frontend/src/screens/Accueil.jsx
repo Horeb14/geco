@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getLots, getClients, getVentes, getPaiementsFournisseur, getRemboursements } from '../api';
+import { getLots, getClients, getVentes, getPaiementsFournisseur } from '../api';
 
 const JOURS = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
 const MOIS = ['jan.','fév.','mars','avr.','mai','juin','juil.','août','sep.','oct.','nov.','déc.'];
@@ -14,21 +14,18 @@ export default function Accueil() {
   const [clients, setClients] = useState([]);
   const [ventes, setVentes] = useState([]);
   const [paiements, setPaiements] = useState([]);
-  const [rembs, setRembs] = useState([]);
-  const [histFilter, setHistFilter] = useState('all');
   const [retardOpen, setRetardOpen] = useState(false);
   const [rappelOpen, setRappelOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [l, c, v, p, r] = await Promise.all([
-        getLots(), getClients(), getVentes(), getPaiementsFournisseur(), getRemboursements(),
+      const [l, c, v, p] = await Promise.all([
+        getLots(), getClients(), getVentes(), getPaiementsFournisseur(),
       ]);
       setLots(l.data);
       setClients(c.data);
       setVentes(v.data);
       setPaiements(p.data);
-      setRembs(r.data);
     } catch {}
   }, []);
 
@@ -50,19 +47,28 @@ export default function Accueil() {
     .reduce((s, l) => s + l.prix_achat_sac * l.quantite_sacs, 0)
     - paiements.reduce((s, p) => s + p.montant, 0);
 
-  // Clientes en retard (dette > 0 avec vente ancienne)
-  const retard = clients.filter(c => c.solde_du > 0);
-  const rappel = clients.filter(c => c.solde_du === 0 && c.solde_du !== undefined);
+  // Clientes en retard = date d'échéance dépassée ET dette non soldée
+  const retard = clients.filter(c => c.en_retard && c.solde_du > 0);
+  // À rappeler = échéance dans ≤ 2 jours mais pas encore dépassée
+  const rappel = clients.filter(c =>
+    !c.en_retard && c.solde_du > 0 &&
+    c.jours_restants !== null && c.jours_restants <= 2
+  );
 
-  // Historique
-  const hist = buildHist(ventes, rembs, paiements, lots);
-  const filteredHist = hist.filter(h => {
-    if (histFilter === 'all') return true;
-    if (histFilter === 'vente') return h.type === 'vente';
-    if (histFilter === 'remb') return h.type === 'remb';
-    if (histFilter === 'mz') return h.type === 'mz_remb' || h.type === 'mz_stock';
-    return true;
-  });
+  // Bilan du jour
+  const today = new Date().toDateString();
+  const ventesAujourdhui = ventes.filter(v => new Date(v.date_vente).toDateString() === today);
+  const encaisseAujourdhui = ventesAujourdhui
+    .filter(v => v.mode_paiement === 'comptant')
+    .reduce((s, v) => s + v.montant_total, 0);
+  const creditAujourdhui = ventesAujourdhui
+    .filter(v => v.mode_paiement !== 'comptant')
+    .reduce((s, v) => s + v.montant_total, 0);
+  const beneficeAujourdhui = ventesAujourdhui.reduce((s, v) => {
+    const lot = lots.find(l => l.id === v.lot);
+    if (!lot) return s;
+    return s + (v.prix_unitaire - lot.prix_achat_sac) * parseFloat(v.quantite);
+  }, 0);
 
   const stockKeys = [
     { key: 'mais', label: 'sacs maïs' },
@@ -166,22 +172,35 @@ export default function Accueil() {
           })}
         </div>
 
-        {/* Historique */}
+        {/* Bilan du jour */}
         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: .6, marginTop: 14, marginBottom: 10 }}>
-          Historique des mouvements
+          Bilan du jour — {ventesAujourdhui.length} vente{ventesAujourdhui.length !== 1 ? 's' : ''}
         </div>
-        <div style={{ display: 'flex', gap: 7, marginBottom: 12, overflowX: 'auto' }}>
-          {[['all','Tout'],['vente','Ventes'],['remb','Remboursements'],['mz','Maman Z']].map(([f,l]) => (
-            <button key={f} onClick={() => setHistFilter(f)} style={{
-              padding: '6px 13px', borderRadius: 'var(--rad-f)', fontSize: 12, fontWeight: 600,
-              border: '1.5px solid', cursor: 'pointer', whiteSpace: 'nowrap',
-              borderColor: histFilter === f ? 'var(--g700)' : 'var(--border)',
-              background: histFilter === f ? 'var(--g700)' : 'var(--surface)',
-              color: histFilter === f ? '#fff' : 'var(--text)',
-            }}>{l}</button>
-          ))}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 8 }}>
+          <div style={{ background: 'var(--g50)', border: '1.5px solid var(--g100)', borderRadius: 'var(--rad-lg)', padding: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--g600)', marginBottom: 5 }}>Encaissé</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--g700)', letterSpacing: -1 }}>
+              {encaisseAujourdhui.toLocaleString('fr-FR')}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--g600)', marginTop: 2 }}>FCFA · comptant</div>
+          </div>
+          <div style={{ background: 'var(--a50)', border: '1.5px solid var(--a100)', borderRadius: 'var(--rad-lg)', padding: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--a500)', marginBottom: 5 }}>Crédit accordé</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: '#92400E', letterSpacing: -1 }}>
+              {creditAujourdhui.toLocaleString('fr-FR')}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--a500)', marginTop: 2 }}>FCFA · à récupérer</div>
+          </div>
         </div>
-        <HistList items={filteredHist} />
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--rad-lg)', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>Bénéfice estimé</div>
+            <div style={{ fontSize: 11, color: 'var(--faint)', marginTop: 2 }}>sur les ventes du jour</div>
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: beneficeAujourdhui >= 0 ? 'var(--g700)' : 'var(--r600)', letterSpacing: -1 }}>
+            {beneficeAujourdhui >= 0 ? '+' : ''}{Math.round(beneficeAujourdhui).toLocaleString('fr-FR')} FCFA
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -243,13 +262,24 @@ function ClienteRow({ c, type }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 14, fontWeight: 700 }}>{c.nom}</div>
         {c.telephone && <div style={{ fontSize: 11, color: 'var(--muted)' }}>+229 {c.telephone}</div>}
-        <div style={{ display: 'flex', gap: 10, marginTop: 3 }}>
-          <span style={{ fontSize: 11, color: 'var(--g600)', fontWeight: 600 }}>
-            Payé: {(c.solde_du === undefined ? 0 : 0).toLocaleString('fr-FR')} FCFA
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 4, alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: 'var(--r600)', fontWeight: 700 }}>
+            Doit : {(c.solde_du || 0).toLocaleString('fr-FR')} FCFA
           </span>
-          <span style={{ fontSize: 11, color: 'var(--r600)', fontWeight: 600 }}>
-            Doit: {(c.solde_du || 0).toLocaleString('fr-FR')} FCFA
-          </span>
+          {c.date_echeance_proche && (
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+              · avant le {new Date(c.date_echeance_proche).getDate()} {['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'][new Date(c.date_echeance_proche).getMonth()]}
+            </span>
+          )}
+          {c.jours_restants !== null && c.jours_restants !== undefined && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 'var(--rad-f)',
+              background: c.jours_restants < 0 ? 'var(--r50)' : 'var(--a50)',
+              color: c.jours_restants < 0 ? 'var(--r600)' : '#92400E',
+            }}>
+              {c.jours_restants < 0 ? `${Math.abs(c.jours_restants)}j de retard` : `Dans ${c.jours_restants}j`}
+            </span>
+          )}
         </div>
       </div>
       {c.telephone && (
@@ -269,115 +299,3 @@ function EmptyRow({ text }) {
   return <div style={{ padding: 14, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>{text}</div>;
 }
 
-function HistList({ items }) {
-  if (!items.length) return (
-    <div style={{ padding: 20, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
-      Aucun mouvement enregistré
-    </div>
-  );
-
-  const grouped = [];
-  let lastDate = '';
-  items.forEach(h => {
-    const d = new Date(h.date);
-    const ds = `${JOURS[d.getDay()]} ${d.getDate()} ${MOIS[d.getMonth()].replace('.', '')}`;
-    if (ds !== lastDate) { grouped.push({ dateStr: ds, items: [] }); lastDate = ds; }
-    grouped[grouped.length - 1].items.push(h);
-  });
-
-  const colors = {
-    vente: ['var(--g50)', 'var(--g700)', 'ti-shopping-cart'],
-    remb: ['var(--a50)', 'var(--a500)', 'ti-coin'],
-    mz_remb: ['var(--r50)', 'var(--r500)', 'ti-cash'],
-    mz_stock: ['var(--g50)', 'var(--g600)', 'ti-package'],
-  };
-
-  return (
-    <>
-      {grouped.map((g, gi) => (
-        <div key={gi}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: .5, padding: '8px 2px 6px' }}>
-            {g.dateStr}
-          </div>
-          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--rad-lg)', overflow: 'hidden', marginBottom: 10 }}>
-            {g.items.map((h, i) => {
-              const c = colors[h.type] || colors.vente;
-              const amtColor = h.signe === '+' ? 'var(--g700)' : h.signe === '-' ? 'var(--r600)' : 'var(--muted)';
-              const prefix = h.signe === '+' ? '+' : h.signe === '-' ? '-' : '';
-              return (
-                <div key={i} style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px',
-                  borderTop: i === 0 ? 'none' : '1px solid var(--border)',
-                }}>
-                  <div style={{
-                    width: 36, height: 36, borderRadius: 9, display: 'flex', alignItems: 'center',
-                    justifyContent: 'center', fontSize: 17, background: c[0], color: c[1], flexShrink: 0,
-                  }}>
-                    <i className={`ti ${c[2]}`} />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: 13.5, fontWeight: 600 }}>{h.desc}</p>
-                    <span style={{ fontSize: 11, color: 'var(--muted)' }}>{h.detail}</span>
-                  </div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: amtColor, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    {prefix}{h.montant.toLocaleString('fr-FR')} FCFA
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </>
-  );
-}
-
-function buildHist(ventes, rembs, paiements, lots) {
-  const items = [];
-  ventes.forEach(v => {
-    items.push({
-      type: 'vente',
-      desc: `Vente · ${v.produit_nom} · ${v.unite_display}`,
-      detail: `${fmtTime(v.date_vente)} · ${v.mode_paiement}${v.client_nom ? ' · ' + v.client_nom : ''}`,
-      montant: v.montant_total,
-      signe: v.mode_paiement === 'credit' ? '~' : '+',
-      date: v.date_vente,
-    });
-  });
-  rembs.forEach(r => {
-    items.push({
-      type: 'remb',
-      desc: `Remboursement · ${r.client_nom}`,
-      detail: fmtTime(r.date),
-      montant: r.montant,
-      signe: '+',
-      date: r.date,
-    });
-  });
-  paiements.forEach(p => {
-    items.push({
-      type: 'mz_remb',
-      desc: `Paiement à ${p.fournisseur_nom}`,
-      detail: fmtTime(p.date),
-      montant: p.montant,
-      signe: '-',
-      date: p.date,
-    });
-  });
-  lots.forEach(l => {
-    items.push({
-      type: 'mz_stock',
-      desc: `Stock pris · ${l.produit_nom} ×${l.quantite_sacs} sacs`,
-      detail: `${fmtTime(l.date_achat)} · +${(l.prix_achat_sac * l.quantite_sacs).toLocaleString('fr-FR')} FCFA de dette`,
-      montant: l.prix_achat_sac * l.quantite_sacs,
-      signe: '-',
-      date: l.date_achat,
-    });
-  });
-  return items.sort((a, b) => new Date(b.date) - new Date(a.date));
-}
-
-function fmtTime(d) {
-  const dt = new Date(d);
-  return dt.getHours().toString().padStart(2, '0') + ':' + dt.getMinutes().toString().padStart(2, '0');
-}

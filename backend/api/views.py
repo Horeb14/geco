@@ -198,7 +198,9 @@ class ClientViewSet(viewsets.ModelViewSet):
     serializer_class = ClientSerializer
 
     def get_queryset(self):
-        return Client.objects.filter(commercant=self.request.user)
+        return Client.objects.filter(commercant=self.request.user).prefetch_related(
+            'ventes', 'remboursements'
+        )
 
     def perform_create(self, serializer):
         serializer.save(commercant=self.request.user)

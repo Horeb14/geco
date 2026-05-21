@@ -143,6 +143,16 @@ class Vente(models.Model):
         ('credit', 'Crédit'),
         ('mixte', 'Mixte'),
     ]
+    # Délai de remboursement par unité (en jours)
+    DELAI_UNITE = {
+        'sac': 30,
+        'demi_sac': 15,
+        'quart_sac': 7,
+        'sachet_bleu': 4,
+        'sachet_jaune': 2,
+        'bols': 7,
+    }
+
     lot = models.ForeignKey(LotAchat, on_delete=models.PROTECT, related_name='ventes')
     client = models.ForeignKey(Client, on_delete=models.SET_NULL, null=True, blank=True, related_name='ventes')
     unite = models.CharField(max_length=15, choices=UNITE_CHOICES)
@@ -152,7 +162,17 @@ class Vente(models.Model):
     mode_paiement = models.CharField(max_length=10, choices=MODE_PAIEMENT, default='comptant')
     montant_rembourse = models.PositiveIntegerField(default=0)
     date_vente = models.DateTimeField(default=timezone.now)
+    date_echeance = models.DateField(null=True, blank=True)
     commercant = models.ForeignKey(Commercant, on_delete=models.CASCADE, related_name='ventes')
+
+    def save(self, *args, **kwargs):
+        # Calcul automatique de l'échéance pour les ventes à crédit
+        if self.mode_paiement in ('credit', 'mixte') and not self.date_echeance:
+            from datetime import timedelta
+            delai = self.DELAI_UNITE.get(self.unite, 30)
+            base = self.date_vente.date() if hasattr(self.date_vente, 'date') else self.date_vente
+            self.date_echeance = base + timedelta(days=delai)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f'Vente {self.unite} — {self.lot.produit.get_nom_display()} — {self.date_vente.date()}'

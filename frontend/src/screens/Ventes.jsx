@@ -3,13 +3,21 @@ import { getLots, createVente, getClients, createClient, getVentes } from '../ap
 import { useToast } from '../components/Toast';
 
 const UNITES = [
-  { label: '1 sac', key: 'sac', mult: 1 },
-  { label: '½ sac', key: 'demi_sac', mult: 0.5 },
-  { label: '¼ sac', key: 'quart_sac', mult: 0.25 },
-  { label: 'Sachet bleu', key: 'sachet_bleu', mult: 0.125 },
-  { label: 'Sachet jaune', key: 'sachet_jaune', mult: 0.0625 },
-  { label: 'Bols (kg)', key: 'bols', mult: 0 },
+  { label: '1 sac', key: 'sac', mult: 1, delai: 30 },
+  { label: '½ sac', key: 'demi_sac', mult: 0.5, delai: 15 },
+  { label: '¼ sac', key: 'quart_sac', mult: 0.25, delai: 7 },
+  { label: 'Sachet bleu', key: 'sachet_bleu', mult: 0.125, delai: 4 },
+  { label: 'Sachet jaune', key: 'sachet_jaune', mult: 0.0625, delai: 2 },
+  { label: 'Bols (kg)', key: 'bols', mult: 0, delai: 7 },
 ];
+
+const MOIS_COURT = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+
+function dateEcheance(unite) {
+  const d = new Date();
+  d.setDate(d.getDate() + (unite.delai || 30));
+  return `${d.getDate()} ${MOIS_COURT[d.getMonth()]} ${d.getFullYear()}`;
+}
 
 export default function Ventes() {
   const showToast = useToast();
@@ -191,6 +199,26 @@ export default function Ventes() {
                 <Lbl>Elle rembourse aussi (FCFA)</Lbl>
                 <Inp placeholder="Ex : 5 000" type="number" inputMode="numeric" value={remb} onChange={e => setRemb(e.target.value)} style={{ marginBottom: 14 }} />
               </>
+            )}
+
+            {/* Date d'échéance automatique */}
+            {(mode === 'credit' || mode === 'mixte') && (
+              <div style={{
+                background: 'var(--a50)', border: '1.5px solid var(--a100)',
+                borderRadius: 'var(--rad)', padding: '12px 14px',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                marginBottom: 14,
+              }}>
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: '#92400E' }}>Date limite de paiement</p>
+                  <p style={{ fontSize: 11, color: 'var(--a500)', marginTop: 2 }}>
+                    {unite.delai} jours · basé sur {unite.label}
+                  </p>
+                </div>
+                <span style={{ fontSize: 16, fontWeight: 800, color: '#92400E' }}>
+                  {dateEcheance(unite)}
+                </span>
+              </div>
             )}
 
             {/* Total */}
