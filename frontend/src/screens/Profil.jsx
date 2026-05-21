@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { updateMe, changePin } from '../api';
+import { updateMe, changePin, getVentes, getRemboursements, getPaiementsFournisseur, getLots } from '../api';
 import { useToast } from '../components/Toast';
 import PinModal from '../components/PinModal';
+
+const JOURS = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+const MOIS  = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
 
 const PRODUITS = [
   { label: '🌽 Maïs', key: 'mais' },
@@ -24,6 +27,49 @@ export default function Profil() {
   const [ville, setVille] = useState(user?.ville || '');
   const [newPin, setNewPin] = useState('');
   const [newPwd, setNewPwd] = useState('');
+  const [hist, setHist] = useState([]);
+  const [histLoading, setHistLoading] = useState(false);
+
+  const loadHist = useCallback(async () => {
+    setHistLoading(true);
+    try {
+      const [v, r, p, l] = await Promise.all([
+        getVentes(), getRemboursements(), getPaiementsFournisseur(), getLots(),
+      ]);
+      const items = [
+        ...v.data.map(x => ({
+          type: 'vente', date: x.date_vente,
+          desc: `Vente · ${x.produit_nom} · ${x.unite_display}`,
+          detail: x.client_nom ? `Cliente : ${x.client_nom}` : 'Comptant',
+          montant: x.montant_total,
+          signe: x.mode_paiement === 'credit' ? '~' : '+',
+        })),
+        ...r.data.map(x => ({
+          type: 'remb', date: x.date,
+          desc: `Remboursement · ${x.client_nom}`,
+          detail: '',
+          montant: x.montant,
+          signe: '+',
+        })),
+        ...p.data.map(x => ({
+          type: 'mz_remb', date: x.date,
+          desc: `Paiement à ${x.fournisseur_nom}`,
+          detail: '',
+          montant: x.montant,
+          signe: '-',
+        })),
+        ...l.data.map(x => ({
+          type: 'mz_stock', date: x.date_achat,
+          desc: `Stock pris · ${x.produit_nom} ×${x.quantite_sacs} sacs`,
+          detail: `Prix achat : ${x.prix_achat_sac.toLocaleString('fr-FR')} FCFA/sac`,
+          montant: x.prix_achat_sac * x.quantite_sacs,
+          signe: '-',
+        })),
+      ].sort((a, b) => new Date(b.date) - new Date(a.date));
+      setHist(items);
+    } catch { }
+    setHistLoading(false);
+  }, []);
 
   const requirePin = (section) => {
     setPinCallback(() => () => {
@@ -138,6 +184,63 @@ export default function Profil() {
           <Inp type="password" placeholder="Minimum 6 caractères"
             value={newPwd} onChange={e => setNewPwd(e.target.value)} />
           <SmBtn onClick={saveSecu}><i className="ti ti-check" /> Enregistrer</SmBtn>
+        </AccordionSection>
+
+        {/* Historique */}
+        <AccordionSection
+          icon="ti-history" label="Mon historique"
+          open={openSection === 'hist'}
+          onToggle={() => {
+            const next = openSection !== 'hist';
+            setOpenSection(next ? 'hist' : null);
+            if (next) loadHist();
+          }}
+        >
+          {histLoading ? (
+            <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+              Chargement...
+            </div>
+          ) : hist.length === 0 ? (
+            <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+              Aucune transaction enregistrée
+            </div>
+          ) : hist.map((h, i) => {
+            const d = new Date(h.date);
+            const dateStr = `${JOURS[d.getDay()]} ${d.getDate()} ${MOIS[d.getMonth()]}`;
+            const hm = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+            const COLORS = {
+              vente:    ['var(--g50)',  'var(--g700)', 'ti-shopping-cart'],
+              remb:     ['var(--a50)',  'var(--a500)', 'ti-coin'],
+              mz_remb:  ['var(--r50)',  'var(--r500)', 'ti-cash'],
+              mz_stock: ['var(--g50)',  'var(--g600)', 'ti-package'],
+            };
+            const [bg, fg, ico] = COLORS[h.type] || COLORS.vente;
+            const amtColor = h.signe === '+' ? 'var(--g700)' : h.signe === '-' ? 'var(--r600)' : 'var(--muted)';
+            const prefix   = h.signe === '+' ? '+' : h.signe === '-' ? '-' : '';
+            return (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', gap: 10, paddingBottom: 12,
+                marginBottom: 12, borderBottom: i < hist.length - 1 ? '1px solid var(--border)' : 'none',
+              }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 9, flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 17, background: bg, color: fg,
+                }}>
+                  <i className={`ti ${ico}`} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 13, fontWeight: 600 }}>{h.desc}</p>
+                  <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                    {dateStr} · {hm}{h.detail ? ` · ${h.detail}` : ''}
+                  </span>
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: amtColor, whiteSpace: 'nowrap' }}>
+                  {prefix}{h.montant.toLocaleString('fr-FR')} FCFA
+                </div>
+              </div>
+            );
+          })}
         </AccordionSection>
 
         <button onClick={doLogout} style={{
