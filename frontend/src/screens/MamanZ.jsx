@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getLots, getFournisseurs, createLot, createPaiementFournisseur, getPaiementsFournisseur, getProduits, createProduit } from '../api';
+import { getLots, getFournisseurs, getConfigs, createLot, createPaiementFournisseur, getPaiementsFournisseur, getProduits, createProduit } from '../api';
 import { useToast } from '../components/Toast';
 
 const PRODUITS = [
@@ -13,6 +13,7 @@ export default function MamanZ() {
   const [lots, setLots] = useState([]);
   const [fournisseurs, setFournisseurs] = useState([]);
   const [paiements, setPaiements] = useState([]);
+  const [config, setConfig] = useState(null);
   const [selProd, setSelProd] = useState('mais');
   const [mzSacs, setMzSacs] = useState('');
   const [mzPrixAchat, setMzPrixAchat] = useState('');
@@ -22,10 +23,13 @@ export default function MamanZ() {
 
   const load = useCallback(async () => {
     try {
-      const [l, f, p] = await Promise.all([getLots(), getFournisseurs(), getPaiementsFournisseur()]);
+      const [l, f, p, c] = await Promise.all([
+        getLots(), getFournisseurs(), getPaiementsFournisseur(), getConfigs(),
+      ]);
       setLots(l.data);
       setFournisseurs(f.data);
       setPaiements(p.data);
+      setConfig(c.data[0] || null);
     } catch {}
   }, []);
 
@@ -34,15 +38,30 @@ export default function MamanZ() {
   const fournisseur = fournisseurs[0];
 
   // Dette = total achat crédit - paiements
-  const detteMZ = lots
+  const detteMZ = Math.max(0, lots
     .filter(l => l.mode_paiement === 'credit')
     .reduce((s, l) => s + l.prix_achat_sac * l.quantite_sacs, 0)
-    - paiements.reduce((s, p) => s + p.montant, 0);
+    - paiements.reduce((s, p) => s + p.montant, 0));
+
+  // Plan de remboursement
+  const cycleJours   = config?.cycle_jours || 5;
+  const delaiJours   = config?.delai_remboursement_jours || 30;
+  const minimumMarche = config?.montant_minimum_marche || 150000;
+  const marchesParMois = Math.floor(delaiJours / cycleJours);            // ex: 30/5 = 6
+  const totalDejaPayé  = paiements.reduce((s, p) => s + p.montant, 0);
+  const totalStock     = lots
+    .filter(l => l.mode_paiement === 'credit')
+    .reduce((s, l) => s + l.prix_achat_sac * l.quantite_sacs, 0);
+  const progressPct    = totalStock > 0 ? Math.min(100, Math.round(totalDejaPayé / totalStock * 100)) : 0;
+  const recommande     = detteMZ > 0 ? Math.max(minimumMarche, Math.ceil(detteMZ / marchesParMois)) : 0;
 
   const payerMZ = async () => {
     const m = parseInt(mzRemb) || 0;
     if (!m) { showToast('Entre le montant à rembourser'); return; }
-    if (m > Math.max(0, detteMZ)) { showToast('Ce montant dépasse ta dette !'); return; }
+    if (m > detteMZ) { showToast('Ce montant dépasse ta dette !'); return; }
+    if (m < minimumMarche && detteMZ > minimumMarche) {
+      showToast(`Minimum recommandé : ${minimumMarche.toLocaleString('fr-FR')} FCFA par marché`);
+    }
     if (!fournisseur) { showToast('Aucun fournisseur configuré'); return; }
     setSaving(true);
     try {
@@ -120,6 +139,55 @@ export default function MamanZ() {
             </a>
           )}
         </div>
+
+        {/* Plan de remboursement */}
+        {detteMZ > 0 && (
+          <div style={{
+            background: 'var(--surface)', border: '1.5px solid var(--border)',
+            borderRadius: 'var(--rad-lg)', padding: 16, marginBottom: 12,
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: .5, marginBottom: 12 }}>
+              Plan de remboursement · {delaiJours} jours
+            </div>
+
+            {/* Barre de progression */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                <span style={{ fontSize: 12, color: 'var(--muted)' }}>Remboursé</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--g700)' }}>{progressPct}%</span>
+              </div>
+              <div style={{ height: 8, background: 'var(--border)', borderRadius: 99, overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', borderRadius: 99, transition: 'width .4s',
+                  width: `${progressPct}%`,
+                  background: progressPct >= 75 ? 'var(--g600)' : progressPct >= 40 ? 'var(--a500)' : 'var(--r500)',
+                }} />
+              </div>
+            </div>
+
+            {/* Détails */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div style={{ background: 'var(--r50)', borderRadius: 'var(--rad)', padding: '10px 12px' }}>
+                <div style={{ fontSize: 11, color: 'var(--r600)', fontWeight: 600, marginBottom: 3 }}>Minimum par marché</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--r600)' }}>
+                  {minimumMarche.toLocaleString('fr-FR')}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--r500)' }}>FCFA</div>
+              </div>
+              <div style={{ background: 'var(--a50)', borderRadius: 'var(--rad)', padding: '10px 12px' }}>
+                <div style={{ fontSize: 11, color: '#92400E', fontWeight: 600, marginBottom: 3 }}>Recommandé ce marché</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: '#92400E' }}>
+                  {recommande.toLocaleString('fr-FR')}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--a500)' }}>FCFA · pour finir en {delaiJours}j</div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)', textAlign: 'center' }}>
+              {marchesParMois} marchés dans {delaiJours} jours · cycle de {cycleJours} jours
+            </div>
+          </div>
+        )}
 
         {/* Rembourser */}
         <Section head={<><i className="ti ti-cash" style={{ color: 'var(--r500)' }} /> Rembourser Maman Z</>} headColor="var(--r600)">

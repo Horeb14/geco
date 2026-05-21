@@ -48,7 +48,8 @@ class FournisseurSerializer(serializers.ModelSerializer):
 class ConfigMarcheSerializer(serializers.ModelSerializer):
     class Meta:
         model = ConfigMarche
-        fields = ['id', 'fournisseur', 'cycle_jours', 'date_reference']
+        fields = ['id', 'fournisseur', 'cycle_jours', 'date_reference',
+                  'montant_minimum_marche', 'delai_remboursement_jours']
 
 
 class LotAchatSerializer(serializers.ModelSerializer):

@@ -70,10 +70,12 @@ class Fournisseur(models.Model):
 
 
 class ConfigMarche(models.Model):
-    """Configuration du cycle de marché"""
+    """Configuration du cycle de marché et règles de remboursement"""
     fournisseur = models.ForeignKey(Fournisseur, on_delete=models.CASCADE, related_name='configs_marche')
     cycle_jours = models.PositiveIntegerField(default=5)
     date_reference = models.DateField()
+    montant_minimum_marche = models.PositiveIntegerField(default=150000)
+    delai_remboursement_jours = models.PositiveIntegerField(default=30)
 
     def __str__(self):
         return f'Marché tous les {self.cycle_jours}j — {self.fournisseur.nom}'
