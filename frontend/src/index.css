@@ -1,0 +1,16 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap');
+@import url('https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css');
+
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+:root{
+  --g900:#0A1F14;--g800:#142E20;--g700:#1B4332;--g600:#2D6A4F;--g100:#D8F3DC;--g50:#F0FAF4;
+  --a500:#E8900A;--a400:#F5A623;--a100:#FEF3C7;--a50:#FFFBEB;
+  --r600:#B91C1C;--r500:#DC2626;--r100:#FEE2E2;--r50:#FFF5F5;
+  --bg:#F5F0E8;--surface:#FFF;--border:#E0D5C5;
+  --text:#1C1917;--muted:#78716C;--faint:#C4B9AD;
+  --rad:12px;--rad-lg:18px;--rad-xl:24px;--rad-f:999px;
+}
+body{font-family:'Outfit',sans-serif;background:#DDD5C8;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:20px 0;}
+@media(max-width:420px){body{background:var(--bg);padding:0;}}
+::-webkit-scrollbar{display:none;}
+button,input,select,textarea{font-family:'Outfit',sans-serif;}
